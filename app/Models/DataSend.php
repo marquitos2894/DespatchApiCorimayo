@@ -17,24 +17,18 @@ class DataSend extends Model
         'fecTraslado',
         'pesoTotal',
         'undPesoTotal',
-
+        
         'ubigueollegada',
         'direccionLlegada',
         'codLocalLlegada',
+        'localLlegada',
         'rucLlegada',
 
         'ubigueoPartida',
         'direccionPartida',
         'codLocalPartida',
+        'localPartida',
         'rucPartida',
-
-        'tipoDocChofer',
-        'nroDocChofer',
-        'licenciaChofer',
-        'nombresChofer',
-        'apellidosChofer',
-
-        'placaVehiculo',
 
         'tipoDocTransp',
         'numDocTransp',
@@ -48,6 +42,14 @@ class DataSend extends Model
 
     public function despatches(){
         return $this->belongsTo(despatch::class);
+    }
+
+    public function driversPivot(){
+        return $this->hasMany(DriversPivot::class);
+    }
+
+    public function vehiclesPivot(){
+        return $this->hasMany(VehiclesPivot::class);
     }
 
 }

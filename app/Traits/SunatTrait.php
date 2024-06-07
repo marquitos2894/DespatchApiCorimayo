@@ -43,6 +43,21 @@ trait SunatTrait {
 
     }
 
+    public function setMotivotraslado(&$data){
+
+        $motTraslado="";
+
+        if($data == "2"){
+            $motTraslado="Compra";
+        }else if($data == "4"){
+            $motTraslado="Traslado entre establecimientos de la misma empresa";
+        }else if($data == "6"){
+            $motTraslado="Devolucion";
+        }
+
+
+    }
+
 
 
 

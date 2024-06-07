@@ -22,9 +22,12 @@ return new class extends Migration
             $table->boolean('estHash')->default(0);
             $table->text('xml')->nullable();
             $table->boolean('estXml')->default(0);
+            $table->text('ticket')->nullable();
             $table->text('cdrZip')->nullable();
             $table->boolean('estcdrZip')->default(0);
-            $table->string('cdrResponse')->nullable();
+            $table->text('urlcodeqr')->nullable();
+            $table->text('cdrResponse')->nullable();
+            $table->string('areatrabajo');
                      
 
             $table->foreignId('companie_id')            

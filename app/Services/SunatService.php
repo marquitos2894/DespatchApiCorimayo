@@ -30,6 +30,11 @@ use Greenter\See;
 use Greenter\Ws\Services\SunatEndpoints;
 use Illuminate\Support\Facades\Storage;
 
+use BaconQrCode\Renderer\ImageRenderer;
+use BaconQrCode\Renderer\Image\ImagickImageBackEnd;
+use BaconQrCode\Renderer\RendererStyle\RendererStyle;
+use BaconQrCode\Writer;
+use Barryvdh\DomPDF\Facade\Pdf as PDF;
 
 class SunatService
 {
@@ -48,7 +53,7 @@ class SunatService
     public function getSeeApi($company){//conexion
         $api = new \Greenter\Api($company->production ?[
             'auth' => 'https://api-seguridad.sunat.gob.pe/v1',
-            'cpe' => 'https://api-cpe.sunat.gob/v1',
+            'cpe' => 'https://api-cpe.sunat.gob.pe/v1',
         ]:[
             'auth' => 'https://gre-test.nubefact.com/v1',
             'cpe' => 'https://gre-test.nubefact.com/v1', 
@@ -155,6 +160,7 @@ class SunatService
     public function getDespatch($data){
         return (new Despatch)
             ->setVersion($data['version'] ?? '2022')
+            ->setAreatrabajo($data['areatrabajo'] ?? 'mantenimiento')
             ->setTipoDoc($data['tipoDoc'] ?? '09')//guia de remision
             ->setSerie($data['serie']?? null)
             ->setCorrelativo($data['correlativo']?? null)
@@ -266,9 +272,10 @@ class SunatService
         ->setPartida(new Direction($data['partida']['ubigueo'],$data['partida']['direccion']));
         
         if($data['modtraslado']=='01'){ //transporte publico 01
-            $shipment->setTransportista($this->getTransportista($data['transportista']));
-            /*$shipment->setVehiculo($this->getVehiculo($data['vehiculos']))
-            ->setChoferes($this->getChoferes($data['choferes']));*/      
+            $shipment->setTransportista($this->getTransportista($data['transportista']))
+            ->setIndicadores(['SUNAT_Envio_IndicadorVehiculoConductoresTransp'])
+            ->setVehiculo($this->getVehiculo($data['vehiculos']))
+            ->setChoferes($this->getChoferes($data['choferes']));    
         }
 
         if($data['modtraslado']=='02'){ //transporte privado 02
@@ -279,7 +286,7 @@ class SunatService
         if($data['codtraslado']=='04'){ //Entre establecimiento misma empresa
             $shipment
             ->setLlegada((new Direction($data['llegada']['ubigueo'],$data['llegada']['direccion']))->setCodLocal($data['llegada']['codLocal'])->setRuc($data['llegada']['ruc']))
-            ->setPartida((new Direction($data['partida']['ubigueo'],$data['partida']['direccion']))->setCodLocal($data['llegada']['codLocal'])->setRuc($data['llegada']['ruc']));
+            ->setPartida((new Direction($data['partida']['ubigueo'],$data['partida']['direccion']))->setCodLocal($data['partida']['codLocal'])->setRuc($data['partida']['ruc']));
         }
 
 
@@ -293,11 +300,11 @@ class SunatService
             ->setTipoDoc($transportista['tipoDoc'] ?? null)//catalogo 1 sunat DNI, RUC, **verificar !!!!!
             ->setNumDoc($transportista['numDoc'] ?? null)
             ->setRznSocial($transportista['rzSocial'] ?? null)
-            ->setNroMtc($transportista['nroMtc'] ?? null)
-            ->setPlaca($transportista['placa'] ?? null)//opcional
-            ->setChoferTipoDoc($transportista['choferTipoDoc'] ?? null)//opcional
-            ->setChoferDoc($transportista['choferDoc'] ?? null)//opcional
-            ->setNroCirculacion($transportista['mtc'] ?? null);//opcional
+            ->setNroMtc($transportista['nroMtc'] ?? null);
+            //->setPlaca($transportista['placa'] ?? null)//opcional
+            //->setChoferTipoDoc($transportista['choferTipoDoc'] ?? null)//opcional
+            //->setChoferDoc($transportista['choferDoc'] ?? null)//opcional
+            //->setNroCirculacion($transportista['mtc'] ?? null);//opcional
             
     }
 
@@ -305,13 +312,14 @@ class SunatService
         /*$vehiculo = (new Vehicle())
             ->setPlaca($data['placa'] ?? null);*/
 
-        $vehiculos = collect($vehiculos);
+        $vehiculos = collect($vehiculos[0]);
         $secundarios = [];
 
         foreach($vehiculos->slice(1) as $item){
             $secundarios[] = (new Vehicle())
                 ->setPlaca($item['placa'] ?? null)
-                ->setNroCirculacion($item['mtc'] ?? null);
+                ->setCodEmisor('MTC')
+                ->setNroAutorizacion($item['mtc'] ?? null);
 
             /*$secundarios[] = (new Transportist())
                 ->setNroMtc($item['nroMtc'] ?? null);*/
@@ -319,13 +327,14 @@ class SunatService
 
         return (new Vehicle())
             ->setPlaca($vehiculos->first()['placa'] ?? null)
-            ->setNroCirculacion($vehiculos->first()['mtc']?? null)
+            ->setCodEmisor('MTC')
+            ->setNroAutorizacion($vehiculos->first()['mtc']?? null)//AGREGAR AUTORIZACION Y ANTES AGREGAR EMISOR Y NRO CIRCULACION ES SOLO PARA TRANSP PUBLICO
             ->setSecundarios($secundarios);
     }
 
-    public function getChoferes($choferes){//transporte privado
+    public function getChoferes($choferes){//transporte privado y publico
 
-        $choferes = collect($choferes);
+        $choferes = collect($choferes[0]);
         $drivers[] = (new Driver)
             ->setTipo('Principal')
             ->setTipoDoc($choferes->first()['tipoDoc'] ?? null)
@@ -366,6 +375,8 @@ class SunatService
         }
 
         $response['cdrZip'] = base64_encode($result->getCdrZip());
+        //$response['cdrZip'] = rtrim(strtr(base64_encode($result->getCdrZip()), '+/', '-_'), '=');
+        //$response['cdrZip'] = mb_convert_encoding($result->getCdrZip(),, 'ISO-8859-1');
 
         //leer el cdr
         $cdr = $result->getCdrResponse();
@@ -406,17 +417,28 @@ class SunatService
                 'footer' => '<p>Nro Resolucion: <b>3232323</b></p>'
             ]
         ];
-
         return $html = $report->render($invoice, $params);
-    
     }
 
     public function generatePdfReport($invoice){//
+
+        $renderer = new ImageRenderer(
+            new RendererStyle(400),
+            new ImagickImageBackEnd()
+        );
+
+        $fileqr = Storage::allFiles('qrcodeDespatch/');
+        Storage::delete($fileqr);
+
+
 
         //$files = glob('/storage/*');
          //Storage::delete(File::glob('path/*.jpg'));
         $file = Storage::allFiles('inovoices/');
         Storage::delete($file);
+
+
+
         $htmlreport = new HtmlReport();
 
         $resolver = new DefaultTemplateResolver();
@@ -436,6 +458,14 @@ class SunatService
             ->firstOrFail();
         
         $hash = ($consultadespatch['hash'])??"";
+        $estcdrzip = ($consultadespatch['estcdrZip'])??"";
+
+        if($estcdrzip == "1"){
+            $writer = new Writer($renderer);
+            $writer->writeFile($invoice->getSerie().'-'.$invoice->getCorrelativo(), 'storage/qrcodeDespatch/qrcode'.$invoice->getSerie().'-'.$invoice->getCorrelativo().'.png');
+        }
+
+
 
         $report = new PdfReport($htmlreport);
 
@@ -450,8 +480,11 @@ class SunatService
 
         $params = [
             'system' => [
+                //'logo' => Storage::get($company->logo_path), // Logo de Empresa
                 'logo' => Storage::get($company->logo_path), // Logo de Empresa
-                'hash' => $hash, // Valor Resumen 
+                'hash' => $hash, // Valor Resumen
+                'qr' => (Storage::get('qrcodeDespatch/qrcode'.$invoice->getSerie().'-'.$invoice->getCorrelativo().'.png'))??"",
+                'estcdrZip' => $estcdrzip
             ],
             'user' => [
                 'header'     => 'Telf: <b> -------- </b>', // Texto que se ubica debajo de la dirección de empresa
@@ -485,26 +518,24 @@ class SunatService
 
     public function generatePdfReport2($invoice){//
 
-        $htmlreport = new HtmlReport();
+        $htmlReport = new HtmlReport();
 
         $resolver = new DefaultTemplateResolver();
-        $htmlreport->setTemplate($resolver->getTemplate($invoice));
+        $htmlReport->setTemplate($resolver->getTemplate($invoice));
 
-        $ruc = $invoice->getCompany()->getRuc();
-        $company = ModelsCompany::where('ruc',$ruc)
-            ->where('user_id',auth()->id())
-            ->first();
-
-        $report = new PdfReport($htmlreport);
-
+        $report = new PdfReport($htmlReport);
+        // Options: Ver mas en https://wkhtmltopdf.org/usage/wkhtmltopdf.txt
         $report->setOptions( [
             'no-outline',
             'viewport-size' => '1280x1024',
             'page-width' => '21cm',
             'page-height' => '29.7cm',
         ]);
-        $report->setBinPath(env('WKHTMLTOPDF_PATH'));
 
+        $report->setBinPath(env('WKHTML_PDF_PATH'));
+
+        $ruc = $invoice->getCompany()->getRuc();
+        $company = ModelsCompany::where('ruc', $ruc)->first();
 
         $params = [
             'system' => [
@@ -523,43 +554,108 @@ class SunatService
         ];
 
         $pdf = $report->render($invoice, $params);
-       //return file_put_contents('invoice.pdf', $pdf);
 
-       
-        Storage::put('inovoices/'.$invoice->getName().'.pdf',$pdf);
+        Storage::put('invoices/' . $invoice->getName() . '.pdf', $pdf);
 
-        //$path = Storage::get('inovoices/'.$invoice->getName().'.pdf');
 
-        //$header = ["Content-Type: application/pdf", "Content-Disposition:attachment","Content-Transfer-Encoding: binary","Content-Length: ".filesize(Storage::get('inovoices/'.$invoice->getName().'.pdf'))];
+    }
+
+    public function getDespatchpdfreport($despatch){
+
+        $renderer = new ImageRenderer(
+            new RendererStyle(400),
+            new ImagickImageBackEnd()
+        );
+
+        $fileqr = Storage::allFiles('qrcodeDespatch/');
+        Storage::delete($fileqr);
+
+        $file = Storage::allFiles('pdf/');
+        Storage::delete($file);
+
+
+        $ruc = $despatch->getCompany()->getRuc();
+        $company = ModelsCompany::where('ruc',$ruc)
+            ->where('user_id',auth()->id())
+            ->first();
         
-        /*$header = [
-            "Content-Type" => "application/pdf; charset=utf-8",
-            "Content-Disposition" => "attachment",
-            "Content-Transfer-Encoding" => " binary"
-        ];*/
+        $consultadespatch = despatchesModel::where('active',1)
+            ->where('serie',$despatch->getSerie())
+            ->where('correlativo',$despatch->getCorrelativo())
+            ->firstOrFail();
+        
+        $hash = ($consultadespatch['hash'])??"";
+        $estcdrzip = ($consultadespatch['estcdrZip'])??"";
 
-        //$header = ['Content-Type' => 'application/pdf'];
+        if($estcdrzip == "1"){
+            $writer = new Writer($renderer);
+            $writer->writeFile($consultadespatch['urlcodeqr'], 
+            'storage/qrcodeDespatch/qrcode'.$despatch->getSerie().'-'.$despatch->getCorrelativo().'.png');
+        }
 
-//        return response()->download(Storage::get('inovoices/20513963085.pdf',$header));
+        $ruc = $despatch->getCompany()->getRuc();
+        $company = ModelsCompany::where('ruc',$ruc)
+            ->where('user_id',auth()->id())
+            ->first();
+        
+        $params = [
+            'system' => [
+                //'logo' => $company->logo_path, // Logo de Empresa
+                'logo'=>'logos/corimayologo.png',
+                'hash' => ($hash)??"", // Valor Resumen
+                'qr' => ('qrcodeDespatch/qrcode'.$despatch->getSerie().'-'.$despatch->getCorrelativo().'.png')??"",
+                'estcdrZip' => $estcdrzip
+            ]
+        ];
 
+
+        $pdf = PDF::loadView('reports.despatch',compact('despatch','params'));
+
+
+        //$pdf->save('storage/pdf/test.pdf');
+        Storage::put('pdf/'.$despatch->getName().'.pdf',$pdf->output());
 
         try{
             $headers = [
-                'Content-Type' => 'application/pdf',
+                "Content-Type" => "application/pdf"   
             ];
-            return response()->download(Storage::get('inovoices/20513963085.pdf'), $headers);
+
+            return response()->download(Storage::get('pdf/'.$despatch->getName().'.pdf'), $headers);
 
 
          }catch(Exception $e){
             return $e->getMessage();
          }
 
-
-        //return Storage::download(Storage::get('inovoices/'.$invoice->getName().'.pdf'),"archivo.pdf");
-
-        //return Storage::download("app/public/storage/logos/0E6HkL9NQFEGmT20qhpjkCe9sGPOcZRc7V7QbUXS.png",$header);
-
     }
+
+    public static function catalogo6($codigo){
+        $documento ="";
+        if($codigo == "1"){
+            $documento = "DNI";
+        }else if($codigo == "4"){
+            $documento = "CARNET EXT";
+        }else if($codigo == "6"){
+            $documento = "RUC";
+        }else if($codigo == "7"){
+            $documento = "PASAPORTE";
+        }
+        return $documento;
+    }
+
+    public static function image_64($img){
+        $b64 = $img;
+
+        // Obtain the original content (usually binary data)
+        $bin = base64_decode($b64);
+
+        // Load GD resource from binary data
+        $img = imageCreateFromString($bin);
+
+        return imagepng($img);
+    }
+
+
 
 
 

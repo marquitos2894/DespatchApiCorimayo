@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('codtraslado');//motivo traslado
             $table->string('modtraslado');//modalidad: privado o publico
-            $table->dateTime('fecTraslado');
+            $table->date('fecTraslado');
             $table->float('pesoTotal');
             $table->string('undPesoTotal');
 
@@ -23,11 +23,13 @@ return new class extends Migration
             $table->string('ubigueollegada');
             $table->string('direccionLlegada');
             $table->string('codLocalLlegada')->nullable();
+            $table->string('localLlegada')->nullable();
             $table->string('rucLlegada')->nullable();
             //DIRECCION PARTIDA
             $table->string('ubigueoPartida');
             $table->string('direccionPartida');
             $table->string('codLocalPartida')->nullable();
+            $table->string('localPartida')->nullable();
             $table->string('rucPartida')->nullable();
             //Datos del conductor
             $table->string('tipoDocChofer')->nullable();
@@ -40,9 +42,9 @@ return new class extends Migration
             $table->string('mtcCirculacion')->nullable();
             
             //Datos de transportista
-            $table->string('tipoDocTransp');
-            $table->string('numDocTransp');
-            $table->string('rzSocialTransp');
+            $table->string('tipoDocTransp')->nullable();
+            $table->string('numDocTransp')->nullable();
+            $table->string('rzSocialTransp')->nullable();
             $table->string('nroMtcTransp')->nullable();
 
             /*$table->string('tipoDocChoferTransp');

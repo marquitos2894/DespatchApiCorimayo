@@ -15,13 +15,13 @@ class details extends Model
         'codigo',
         'descripcion',
         'cantidad',
-        '"unidad"',
+        'unidad',
         'equipo',
         'despatch_id'
     ];
 
     public function despatches(){
-        return $this->belongsTo(despatch::class);
+        return $this->belongsTo(despatch::class,'despatch_id');
     }
 
 }

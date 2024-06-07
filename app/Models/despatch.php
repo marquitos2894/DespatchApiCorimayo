@@ -20,13 +20,17 @@ class despatch extends Model
         'hash',
         'estHash',
         'xml',
+        'ticket',
         'estXml',
         'cdrZip',
         'estcdrZip',
+        'urlcodeqr',
         'cdrResponse',
         'companie_id',
         'client_id',
-        'sucursal_id'
+        'sucursal_id',
+        'areatrabajo'
+        
     ];
 
     public function companies(){

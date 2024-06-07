@@ -53,6 +53,8 @@ Route::post('despatches/pdf',[DespatchController::class,'pdf'])->middleware('aut
 Route::post('despatches/store',[DespatchController::class,'store'])->middleware('auth:api');
 Route::post('despatches/viewlist',[DespatchController::class,'index'])->middleware('auth:api');
 Route::post('despatches/viewguia',[DespatchController::class,'view'])->middleware('auth:api');
-
+Route::post('despatches/search',[DespatchController::class,'search'])->middleware('auth:api');
+Route::post('despatches/detailsdespatch',[DespatchController::class,'detailsdespatch'])->middleware('auth:api');
+//detailsdespatch
 //Machine
 Route::post('machine/viewlist',[MachineController::class,'index'])->middleware('auth:api');

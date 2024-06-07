@@ -24,8 +24,8 @@ return new class extends Migration
             $table->string('cert_path');//pem
 
             //Credenciales API
-            $table->string('client_idCode')->nullable();
-            $table->string('client_secretCode')->nullable();
+            $table->string('client_id')->nullable();
+            $table->string('client_secret')->nullable();
 
             $table->boolean('production')->default(false);
 

@@ -106,7 +106,7 @@ class InvoiceController extends Controller
         $sunat = new  SunatService();
         $invoice = $sunat->getInvoice($data);// Se genera la factura //
 
-        $sunat->generatePdfReport($invoice);   
+        //$sunat->generatePdfReport2($invoice);   
         return $sunat->getHtmlReport($invoice);
     }
 
